@@ -448,11 +448,11 @@ _jinit_write_png(j_decompress_ptr cinfo)
   dest = (png_dest_ptr)
       (*cinfo->mem->alloc_small) ((j_common_ptr)cinfo, JPOOL_IMAGE,
                                   sizeof(png_dest_struct));
+  memset(dest, 0, sizeof(png_dest_struct));
   dest->pub.start_output = start_output_png;
   dest->pub.write_icc_profile = write_icc_profile_png;
   dest->pub.finish_output = finish_output_png;
   dest->pub.calc_buffer_dimensions = calc_buffer_dimensions_png;
-  memset(&dest->iccp, 0, sizeof(struct spng_iccp));
 
   /* Calculate output image dimensions so we can allocate space */
   if (cinfo->image_width > JPEG_MAX_DIMENSION ||

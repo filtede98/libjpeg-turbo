@@ -645,6 +645,10 @@ request_virt_sarray(j_common_ptr cinfo, int pool_id, boolean pre_zero,
   if (pool_id != JPOOL_IMAGE)
     ERREXIT1(cinfo, JERR_BAD_POOL_ID, pool_id); /* safety check */
 
+  if (samplesperrow == 0 || samplesperrow > MAX_ALLOC_CHUNK ||
+      maxaccess == 0 || numrows == 0)
+    out_of_memory(cinfo, 9);
+
   /* get control block */
   result = (jvirt_sarray_ptr)alloc_small(cinfo, pool_id,
                                          sizeof(struct jvirt_sarray_control));
@@ -674,6 +678,9 @@ request_virt_barray(j_common_ptr cinfo, int pool_id, boolean pre_zero,
   /* Only IMAGE-lifetime virtual arrays are currently supported */
   if (pool_id != JPOOL_IMAGE)
     ERREXIT1(cinfo, JERR_BAD_POOL_ID, pool_id); /* safety check */
+
+  if (blocksperrow == 0 || maxaccess == 0 || numrows == 0)
+    out_of_memory(cinfo, 6);
 
   /* get control block */
   result = (jvirt_barray_ptr)alloc_small(cinfo, pool_id,
@@ -766,6 +773,8 @@ realize_virt_arrays(j_common_ptr cinfo)
 
   for (sptr = mem->virt_sarray_list; sptr != NULL; sptr = sptr->next) {
     if (sptr->mem_buffer == NULL) { /* if not realized yet */
+      if (sptr->maxaccess == 0)
+        out_of_memory(cinfo, 9);
       minheights = ((long)sptr->rows_in_array - 1L) / sptr->maxaccess + 1L;
       if (minheights <= max_minheights) {
         /* This buffer fits in memory */
@@ -790,6 +799,8 @@ realize_virt_arrays(j_common_ptr cinfo)
 
   for (bptr = mem->virt_barray_list; bptr != NULL; bptr = bptr->next) {
     if (bptr->mem_buffer == NULL) { /* if not realized yet */
+      if (bptr->maxaccess == 0)
+        out_of_memory(cinfo, 6);
       minheights = ((long)bptr->rows_in_array - 1L) / bptr->maxaccess + 1L;
       if (minheights <= max_minheights) {
         /* This buffer fits in memory */
@@ -933,8 +944,8 @@ access_virt_sarray(j_common_ptr cinfo, jvirt_sarray_ptr ptr,
                                             sizeof(JSAMPLE));
 
   /* debugging check */
-  if (end_row > ptr->rows_in_array || num_rows > ptr->maxaccess ||
-      ptr->mem_buffer == NULL)
+  if (ptr == NULL || end_row < start_row || end_row > ptr->rows_in_array ||
+      num_rows > ptr->maxaccess || ptr->mem_buffer == NULL)
     ERREXIT(cinfo, JERR_BAD_VIRTUAL_ACCESS);
 
   /* Make the desired part of the virtual array accessible */
@@ -1017,8 +1028,8 @@ access_virt_barray(j_common_ptr cinfo, jvirt_barray_ptr ptr,
   JDIMENSION undef_row;
 
   /* debugging check */
-  if (end_row > ptr->rows_in_array || num_rows > ptr->maxaccess ||
-      ptr->mem_buffer == NULL)
+  if (ptr == NULL || end_row < start_row || end_row > ptr->rows_in_array ||
+      num_rows > ptr->maxaccess || ptr->mem_buffer == NULL)
     ERREXIT(cinfo, JERR_BAD_VIRTUAL_ACCESS);
 
   /* Make the desired part of the virtual array accessible */

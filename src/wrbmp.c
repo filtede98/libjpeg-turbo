@@ -498,6 +498,7 @@ jinit_write_bmp(j_decompress_ptr cinfo, boolean is_os2,
   dest = (bmp_dest_ptr)
     (*cinfo->mem->alloc_small) ((j_common_ptr)cinfo, JPOOL_IMAGE,
                                 sizeof(bmp_dest_struct));
+  memset(dest, 0, sizeof(bmp_dest_struct));
   dest->pub.start_output = start_output_bmp;
   dest->pub.write_icc_profile = write_icc_profile_bmp;
   dest->pub.finish_output = finish_output_bmp;
