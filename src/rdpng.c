@@ -717,6 +717,7 @@ _jinit_read_png(j_compress_ptr cinfo)
   source = (png_source_ptr)
     (*cinfo->mem->alloc_small) ((j_common_ptr)cinfo, JPOOL_IMAGE,
                                 sizeof(png_source_struct));
+  memset(source, 0, sizeof(png_source_struct));
   /* Fill in method ptrs, except get_pixel_rows which start_input sets */
   source->pub.start_input = start_input_png;
   source->pub.read_icc_profile = read_icc_profile_png;
