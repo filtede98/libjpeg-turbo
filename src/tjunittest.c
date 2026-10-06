@@ -954,6 +954,92 @@ bailout:
 }
 
 
+static void transformBufSizeTest(void)
+{
+  tjhandle handleComp = NULL, handleXform = NULL;
+  unsigned char pixels[16 * 16 * 4] = { 0 };
+  unsigned char *baseJpeg = NULL, *jpegBuf = NULL, *dstBuf = NULL;
+  size_t baseSize = 0, jpegSize = 0, dstSize = 0, expectedBufSize = 0;
+  size_t extraLen = 10000;
+  tjtransform xform;
+
+  printf("tj3TransformBufSize() extra marker test\n");
+
+  if ((handleComp = tj3Init(TJINIT_COMPRESS)) == NULL ||
+      (handleXform = tj3Init(TJINIT_TRANSFORM)) == NULL)
+    THROW_TJ(NULL);
+
+  TRY_TJ(handleComp, tj3Set(handleComp, TJPARAM_SUBSAMP, TJSAMP_420));
+  TRY_TJ(handleComp, tj3Set(handleComp, TJPARAM_QUALITY, 85));
+  TRY_TJ(handleComp, tj3Compress8(handleComp, pixels, 16, 0, 16, TJPF_RGBX,
+                                  &baseJpeg, &baseSize));
+
+  if (baseSize < 2 || baseJpeg[0] != 0xFF || baseJpeg[1] != 0xD8)
+    THROW("Invalid JPEG generated");
+
+  /* Insert a 10,000-byte APP1 marker after SOI */
+  jpegSize = baseSize + extraLen + 4;
+  if ((jpegBuf = (unsigned char *)malloc(jpegSize)) == NULL)
+    THROW("Memory allocation failure");
+  jpegBuf[0] = baseJpeg[0];
+  jpegBuf[1] = baseJpeg[1];
+  jpegBuf[2] = 0xFF;
+  jpegBuf[3] = 0xE1;
+  jpegBuf[4] = (unsigned char)((extraLen + 2) >> 8);
+  jpegBuf[5] = (unsigned char)((extraLen + 2) & 0xFF);
+  memset(&jpegBuf[6], 'E', extraLen);
+  memcpy(&jpegBuf[6 + extraLen], &baseJpeg[2], baseSize - 2);
+
+  memset(&xform, 0, sizeof(tjtransform));
+  xform.op = TJXOP_NONE;
+
+  /* Test with TJPARAM_SAVEMARKERS == 2 (copy all markers) */
+  TRY_TJ(handleXform, tj3Set(handleXform, TJPARAM_SAVEMARKERS, 2));
+  TRY_TJ(handleXform, tj3DecompressHeader(handleXform, jpegBuf, jpegSize));
+  expectedBufSize = tj3TransformBufSize(handleXform, &xform);
+  if (expectedBufSize <= extraLen)
+    THROW("tj3TransformBufSize() failed to account for APP1 marker");
+
+  TRY_TJ(handleXform, tj3Set(handleXform, TJPARAM_NOREALLOC, 1));
+  if ((dstBuf = (unsigned char *)malloc(expectedBufSize)) == NULL)
+    THROW("Memory allocation failure");
+  dstSize = expectedBufSize;
+  TRY_TJ(handleXform, tj3Transform(handleXform, jpegBuf, jpegSize, 1,
+                                   &dstBuf, &dstSize, &xform));
+  free(dstBuf);  dstBuf = NULL;
+
+  /* Test with TJPARAM_SAVEMARKERS == 0 (do not copy markers) */
+  TRY_TJ(handleXform, tj3Set(handleXform, TJPARAM_SAVEMARKERS, 0));
+  TRY_TJ(handleXform, tj3DecompressHeader(handleXform, jpegBuf, jpegSize));
+  expectedBufSize = tj3TransformBufSize(handleXform, &xform);
+  if (expectedBufSize > extraLen)
+    THROW("tj3TransformBufSize() erroneously accounted for APP1 marker when TJPARAM_SAVEMARKERS == 0");
+  if ((dstBuf = (unsigned char *)malloc(expectedBufSize)) == NULL)
+    THROW("Memory allocation failure");
+  dstSize = expectedBufSize;
+  TRY_TJ(handleXform, tj3Transform(handleXform, jpegBuf, jpegSize, 1,
+                                   &dstBuf, &dstSize, &xform));
+  free(dstBuf);  dstBuf = NULL;
+
+  /* Test handle reuse: decompress base JPEG (no APP1) with SAVEMARKERS == 2 */
+  TRY_TJ(handleXform, tj3Set(handleXform, TJPARAM_SAVEMARKERS, 2));
+  TRY_TJ(handleXform, tj3DecompressHeader(handleXform, baseJpeg, baseSize));
+  expectedBufSize = tj3TransformBufSize(handleXform, &xform);
+  if (expectedBufSize > extraLen)
+    THROW("tj3TransformBufSize() retained stale extra marker size across images");
+
+  printf("Done.      \n");
+
+bailout:
+  free(jpegBuf);
+  free(dstBuf);
+  tj3Free(baseJpeg);
+  tj3Destroy(handleComp);
+  tj3Destroy(handleXform);
+}
+
+
+
 static void rgb_to_cmyk(int r, int g, int b, int *c, int *m, int *y, int *k)
 {
   double ctmp = 1.0 - ((double)r / (double)maxSample);
@@ -1450,6 +1536,8 @@ int main(int argc, char *argv[])
     doTest(35, 39, _4sampleFormats, 4, TJSAMP_GRAY, "test");
   }
   bufSizeTest();
+  if (precision == 8 && !lossless && !doYUV)
+    transformBufSizeTest();
   if (doYUV) {
     printf("\n--------------------\n\n");
     doTest(48, 48, _onlyRGB, 1, TJSAMP_444, "test_yuv0");
